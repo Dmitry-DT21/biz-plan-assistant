@@ -1,0 +1,22 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="49w9F6mVhz9Z06c7buLC">
+    <mxGraphModel dx="846" dy="588" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="66Gs6obRSb13CoYR01K--1" parent="1" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;" value="Загрузка файла с данными по франшизам" vertex="1">
+          <mxGeometry height="60" width="120" x="120" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="66Gs6obRSb13CoYR01K--2" edge="1" parent="1" source="66Gs6obRSb13CoYR01K--1" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="390" y="330" as="sourcePoint" />
+            <mxPoint x="320" y="110" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="66Gs6obRSb13CoYR01K--3" parent="1" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;" value="Формирование запроса к LLM по каждой строке файла" vertex="1">
+          <mxGeometry height="60" width="120" x="320" y="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
