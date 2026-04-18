@@ -1,0 +1,3 @@
+EnvYAML
+GigaChat
+requests

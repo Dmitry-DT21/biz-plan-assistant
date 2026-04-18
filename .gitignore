@@ -1,0 +1,24 @@
+# Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment Variables & Secrets
+.env
+.venv
+*.env
+
+# Distribution/Packaging
+dist/
+build/
+*.egg-info/
+
+# PyCharm:
+
+.idea/
