@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+logs/
 
 # Virtual Environments
 venv/
@@ -13,6 +14,7 @@ ENV/
 .env
 .venv
 *.env
+token.json
 
 # Distribution/Packaging
 dist/

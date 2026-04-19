@@ -1,33 +1,70 @@
-from envyaml import EnvYAML
-from gigachat import GigaChat
-import time
-import requests
-import uuid
 import base64
 import json
+import time
+import uuid
+from pathlib import Path
+
+import requests
+from envyaml import EnvYAML
+from gigachat import GigaChat
 
 CONFIG = EnvYAML('config.yaml')
+TOKEN_FILE_NAME = 'token.json'
+LOGS_DIR = 'logs'
 
 
 def main():
+    init_logs()
     load_config()
-    token = get_token()
-    print(f'token = {token}')
 
     giga = GigaChat(
-        access_token=token['access_token']
+        access_token=get_token()['access_token']
     )
-    print(f'giga = {giga}')
 
-    response = giga.chat("Привет! Как дела?")
+    # название файла без расширения с промптом
+    prompt_name = 'costs_v03'
+    # в дальнейшем параметры для prompt будем брать из CSV по всем отраслям
+    prompt = load_prompt(prompt_name, {
+        'industry_group': 'Кафе и рестораны',
+        'industry_name': 'Кофейня',
+        'region_name': 'Тамбов',
+        # в зависимости от указанного бюджета ориентируемся Q1/Q2/Q3 из CSV
+        'budget': '450000'
+    })
+
+    ask_giga(giga, prompt)
+
+
+def init_logs():
+    Path(LOGS_DIR).mkdir(parents=True, exist_ok=True)
+
+
+def save_log(log, sfx):
+    tm = time.time_ns()
+    with open(f'{LOGS_DIR}/{tm}_{sfx}.txt', 'w', encoding='utf-8') as f:
+        f.write(str(log))
+
+
+def ask_giga(giga, prompt):
+    save_log(prompt, 'req')
+    response = giga.chat(prompt)
+    save_log(response, 'resp')
     print(response.choices[0].message.content)
+
+
+def load_prompt(prompt_name, params):
+    with open('prompts/' + prompt_name + '.txt', 'r', encoding='utf-8') as f:
+        data = f.read()
+    for key, value in params.items():
+        data = data.replace('{' + key + '}', value)
+    return data
 
 
 def load_config():
     # Load and parse the file automatically substituting env variables
     active_llm = CONFIG['llms']['active']
     if active_llm != 'gigachat':
-        print(f'The version \'{active_llm}\' does not support as LLM API')
+        print(f'The version \'{active_llm}\' is not supported as LLM API')
         exit(1)
 
 
@@ -43,10 +80,8 @@ def get_token():
     except Exception as e:
         print(f'WARN: {e}')
         token = authenticate(CONFIG['llms']['configs']['gigachat'])
+    print(f'token = {token}')
     return token
-
-
-TOKEN_FILE_NAME = 'token.json'
 
 
 def authenticate(config):
