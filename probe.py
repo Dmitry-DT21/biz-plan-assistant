@@ -22,14 +22,14 @@ def main():
     )
 
     # название файла без расширения с промптом
-    prompt_name = 'costs_v03'
+    prompt_name = 'costs_v04'
     # в дальнейшем параметры для prompt будем брать из CSV по всем отраслям
     prompt = load_prompt(prompt_name, {
-        'industry_group': 'Кафе и рестораны',
-        'industry_name': 'Кофейня',
-        'region_name': 'Тамбов',
+        'industry_group': 'Розничная торговля',
+        'industry_name': 'Цветы и подарки',
+        'region_name': 'Москва',
         # в зависимости от указанного бюджета ориентируемся Q1/Q2/Q3 из CSV
-        'budget': '450000'
+        'budget': '200000'
     })
 
     ask_giga(giga, prompt)
