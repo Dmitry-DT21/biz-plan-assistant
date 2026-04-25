@@ -1,3 +1,4 @@
 requests~=2.33.1
 envyaml~=1.10.211231
 gigachat~=0.2.0
+openai~=2.32.0

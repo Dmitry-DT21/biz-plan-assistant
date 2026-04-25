@@ -1,11 +1,14 @@
 llms:
-  active: gigachat
+  active: deepseek
   configs:
     gigachat:
       client-id: ${GIGA_CLIENT_ID}
       client-secret: ${GIGA_CLIENT_SECRET}
       auth: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
       api: https://gigachat.devices.sberbank.ru/api/v1
-    chatgpt:
     deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
+      api: https://api.deepseek.com
+      model: deepseek-v4-flash
+    chatgpt:
     groke:
