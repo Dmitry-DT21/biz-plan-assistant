@@ -28,6 +28,14 @@ GIGA_CLIENT_SECRET=<ваш_CLIENT_SECRET>
 
 DEEPSEEK_API_KEY=<ваш_API_KEY>
 
+### OpenAI
+
+Зарегистрируйтесь на https://developers.openai.com
+
+Создайте свой API key и укажите его в файл .env
+
+OPENAI_API_KEY=<ваш_API_KEY>
+
 ### Конфигурация
 
 Для выбора LLM укажите в файле config.yaml нужное значение:

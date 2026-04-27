@@ -38,23 +38,23 @@ def init_logs():
 
 # сохранение строки в папке для логов
 # название файла - временная метка плюс суффикс для идентификации запрос/ответ
-def save_log(log, sfx):
+def save_log(log, model, sfx):
     tm = time.time_ns()
-    with open(f'{LOGS_DIR}/{tm}_{sfx}.txt', 'w', encoding='utf-8') as f:
+    with open(f'{LOGS_DIR}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
         f.write(str(log))
 
 
 # основной метод запроса данных у LLM, используем конфиг для определения конкретного варианта сервиса
 # запрос и ответ логируем
 def ask_llm(config, prompt):
-    save_log(prompt, 'req')
+    model = config['model']
+    save_log(prompt, model, 'req')
     response = ''
     if config['llm'] == 'gigachat':
         giga = config['giga']
         response = giga.chat(prompt)
     elif config['llm'] == 'deepseek':
         client = config['client']
-        model = config['model']
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -65,8 +65,17 @@ def ask_llm(config, prompt):
             reasoning_effort="high",
             extra_body={"thinking": {"type": "enabled"}}
         )
-    save_log(response, 'resp')
-    print(response.choices[0].message.content)
+    elif config['llm'] == 'openai':
+        client = config['client']
+        response = client.responses.create(
+            model=model,
+            input=prompt
+        )
+    save_log(response, model, 'resp')
+    if config['llm'] == 'openai':
+        print(response.output_text)
+    else:
+        print(response.choices[0].message.content)
 
 
 # загружаем промпт в зависимости от выбранной LLM (для разных LLM промпты могут различаться)
@@ -83,8 +92,15 @@ def load_prompt(config, prompt_name, params):
 def load_config():
     # Load and parse the file automatically substituting env variables
     active_llm = CONFIG['llms']['active']
+    config = CONFIG['llms']['configs'][active_llm]
+    if active_llm in ['openai', 'deepseek']:
+        model = config['model']
+        client = OpenAI(
+            api_key=config['api-key'],
+            base_url=config['api']
+        )
+        return {'llm': active_llm, 'prompt_dir': 'prompts/' + active_llm, 'client': client, 'model': model}
     if active_llm == 'deepseek':
-        config = CONFIG['llms']['configs']['deepseek']
         model = config['model']
         client = OpenAI(
             api_key=config['api-key'],
@@ -93,7 +109,9 @@ def load_config():
         return {'llm': active_llm, 'prompt_dir': 'prompts/' + active_llm, 'client': client, 'model': model}
     if active_llm == 'gigachat':
         giga = GigaChat(
-            access_token=get_token()['access_token']
+            access_token=get_token()['access_token'],
+            base_url=config['api'],
+            model=config['model']
         )
         return {'llm': active_llm, 'prompt_dir': 'prompts/' + active_llm, 'giga': giga}
     print(f'The version \'{active_llm}\' is not supported as LLM API')
