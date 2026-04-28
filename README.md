@@ -55,7 +55,7 @@ llms:
       enabled: <true|false>
 ```
 
-Поддерживаются gigachat для GigaChat, deepseek для DeepSeek
+Поддерживаются gigachat для GigaChat, deepseek для DeepSeek, openai для OpenAI (ChatGPT)
 
 ### Структура проекта
 
