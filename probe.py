@@ -2,6 +2,7 @@ import base64
 import json
 import time
 import uuid
+import csv
 from pathlib import Path
 
 import requests
@@ -9,79 +10,93 @@ from envyaml import EnvYAML
 from gigachat import GigaChat
 from openai import OpenAI
 
-CONFIG = EnvYAML('config.yaml')
+CONFIG = EnvYAML('config.yaml')  # Load and parse the file automatically substituting env variables
+PROMPTS_PATH = CONFIG['prompts']['path']
+LOGS_PATH = CONFIG['logs']['path']
+IDEA_FILE = CONFIG['idea']['file']
 TOKEN_FILE_NAME = 'token.json'
-LOGS_DIR = 'logs'
 
 
 def main():
     init_logs()
-    config = load_config()
-    # название файла без расширения с промптом
-    prompt_name = 'costs'
-    # в дальнейшем параметры для prompt будем брать из CSV по всем отраслям
-    prompt = load_prompt(config, prompt_name, {
-        'industry_group': 'Розничная торговля',
-        'industry_name': 'Цветы и подарки',
-        'region_name': 'Москва',
-        # в зависимости от указанного бюджета ориентируемся Q1/Q2/Q3 из CSV
-        'budget': '200000'
-    })
+    load_config()
 
-    ask_llm(config, prompt)
+    print('MAIN: читаем файл с бизнес-идеями')
+    with open(IDEA_FILE, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file, delimiter=';')
+        for row in reader:
+            print('-' * 80)
+            print(f'IDEA: idea=<{row['idea']}>, region=<{row['region']}>, budget=<{row['budget']}>')
+            prompt = load_prompt('costs.txt', {
+                'idea': row['idea'],
+                'region_name': row['region'],
+                'budget': row['budget']
+            })
+            print('PROMPT:')
+            print(prompt)
+            print('-' * 80)
+            for llm, config in CONFIG['llms']['configs'].items():
+                # пропускаем неактивные LLM
+                if not config['enabled']:
+                    continue
+                client = config['client']
+                print(f'INFO: LLM={llm} model={config['model']}')
+                print('ANSWER:')
+                # получаем ответ от LLM на наш промпт
+                ask_llm(llm, config, prompt)
+                print('-' * 80)
 
 
 # создаем директорию для логов
 def init_logs():
-    Path(LOGS_DIR).mkdir(parents=True, exist_ok=True)
+    Path(LOGS_PATH).mkdir(parents=True, exist_ok=True)
 
 
 # сохранение строки в папке для логов
 # название файла - временная метка плюс суффикс для идентификации запрос/ответ
 def save_log(log, model, sfx):
     tm = time.time_ns()
-    with open(f'{LOGS_DIR}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
+    with open(f'{LOGS_PATH}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
         f.write(str(log))
 
 
 # основной метод запроса данных у LLM, используем конфиг для определения конкретного варианта сервиса
 # запрос и ответ логируем
-def ask_llm(config, prompt):
+def ask_llm(llm_name, config, prompt):
     model = config['model']
     save_log(prompt, model, 'req')
-    response = ''
-    if config['llm'] == 'gigachat':
-        giga = config['giga']
-        response = giga.chat(prompt)
-    elif config['llm'] == 'deepseek':
-        client = config['client']
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                # {"role": "system", "content": "You are a helpful assistant"},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-            reasoning_effort="high",
-            extra_body={"thinking": {"type": "enabled"}}
-        )
-    elif config['llm'] == 'openai':
-        client = config['client']
-        response = client.responses.create(
-            model=model,
-            input=prompt
-        )
+    client = config['client']
+    response = None
+
+    match llm_name:
+        case 'gigachat':
+            response = client.chat(prompt)
+        case 'deepseek':
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                reasoning_effort="high",
+                extra_body={"thinking": {"type": "enabled"}}
+            )
+        case 'openai':
+            response = client.responses.create(
+                model=model,
+                input=prompt
+            )
+
     save_log(response, model, 'resp')
-    if config['llm'] == 'openai':
+    if llm_name == 'openai':
         print(response.output_text)
     else:
         print(response.choices[0].message.content)
 
 
-# загружаем промпт в зависимости от выбранной LLM (для разных LLM промпты могут различаться)
-def load_prompt(config, prompt_name, params):
-    prompt_dir = config['prompt_dir']
-    with open(f'{prompt_dir}/{prompt_name}.txt', 'r', encoding='utf-8') as f:
+# загружаем промпт с подстановкой параметров
+def load_prompt(prompt_name, params):
+    with open(f'{PROMPTS_PATH}/{prompt_name}', 'r', encoding='utf-8') as f:
         data = f.read()
         for key, value in params.items():
             data = data.replace('{' + key + '}', value)
@@ -90,32 +105,27 @@ def load_prompt(config, prompt_name, params):
 
 # загружает конфигурацию из config.yaml, создаем клиента для выбранной LLM
 def load_config():
-    # Load and parse the file automatically substituting env variables
-    active_llm = CONFIG['llms']['active']
-    config = CONFIG['llms']['configs'][active_llm]
-    if active_llm in ['openai', 'deepseek']:
-        model = config['model']
-        client = OpenAI(
-            api_key=config['api-key'],
-            base_url=config['api']
-        )
-        return {'llm': active_llm, 'prompt_dir': 'prompts/' + active_llm, 'client': client, 'model': model}
-    if active_llm == 'deepseek':
-        model = config['model']
-        client = OpenAI(
-            api_key=config['api-key'],
-            base_url=config['api']
-        )
-        return {'llm': active_llm, 'prompt_dir': 'prompts/' + active_llm, 'client': client, 'model': model}
-    if active_llm == 'gigachat':
-        giga = GigaChat(
-            access_token=get_token()['access_token'],
-            base_url=config['api'],
-            model=config['model']
-        )
-        return {'llm': active_llm, 'prompt_dir': 'prompts/' + active_llm, 'giga': giga}
-    print(f'The version \'{active_llm}\' is not supported as LLM API')
-    exit(1)
+    print('CONFIG: загружаем конфигурацию по поддерживаемым LLM')
+    for llm, config in CONFIG['llms']['configs'].items():
+        enabled = bool(config['enabled'])
+        client = None
+        if enabled:
+            match llm:
+                case 'openai' | 'deepseek':
+                    client = OpenAI(
+                        api_key=config['api-key'],
+                        base_url=config['api']
+                    )
+                case 'gigachat':
+                    client = GigaChat(
+                        access_token=get_token()['access_token'],
+                        base_url=config['api'],
+                        model=config['model']
+                    )
+                case _:
+                    print(f'LLM {llm} не поддерживается')
+                    exit(1)
+            config['client'] = client
 
 
 # GigaChat: получение access_token

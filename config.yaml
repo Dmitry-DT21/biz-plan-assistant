@@ -1,5 +1,10 @@
+idea:
+  file: ideas.csv
+logs:
+  path: logs
+prompts:
+  path: prompts
 llms:
-  active: deepseek
   configs:
     gigachat:
       client-id: ${GIGA_CLIENT_ID}
@@ -7,12 +12,15 @@ llms:
       auth: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
       api: https://gigachat.devices.sberbank.ru/api/v1
       model: GigaChat-2-Pro
+#      model: GigaChat-2-Max
+      enabled: true
     deepseek:
       api-key: ${DEEPSEEK_API_KEY}
       api: https://api.deepseek.com
       model: deepseek-v4-pro
+      enabled: true
     openai:
       api-key: ${OPENAI_API_KEY}
       api: https://api.openai.com/v1
       model: gpt-5.5
-    groke:
+      enabled: true
