@@ -1,8 +1,9 @@
 import base64
+import csv
 import json
+import logging
 import time
 import uuid
-import csv
 from pathlib import Path
 
 import requests
@@ -13,38 +14,106 @@ from openai import OpenAI
 CONFIG = EnvYAML('config.yaml')  # Load and parse the file automatically substituting env variables
 PROMPTS_PATH = CONFIG['prompts']['path']
 LOGS_PATH = CONFIG['logs']['path']
-IDEA_FILE = CONFIG['idea']['file']
+INDUSTRIES_FILE = CONFIG['data']['industries']
+REGIONS_FILE = CONFIG['data']['regions']
+SEGMENTS_FILE = CONFIG['data']['segments']
 TOKEN_FILE_NAME = 'token.json'
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     init_logs()
-    load_config()
+    llm_configs = load_llm_config()
 
-    print('MAIN: читаем файл с бизнес-идеями')
-    with open(IDEA_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=';')
+    industries = load_industries()
+    regions = load_regions()
+    segments = load_segments()
+
+    # фильтруем сегменты по доступным регионам и отраслям
+    filtered_segments = []
+    for segment in segments:
+        if segment['industry_id'] not in industries:
+            continue
+        if segment['region_id'] not in regions:
+            continue
+        filtered_segments.append(segment)
+    logging.info(f'Исходный список {len(segments)}, отфильтрованный {len(filtered_segments)}')
+
+    # основной цикл
+    for segment in filtered_segments:
+        industry_id = segment['industry_id']
+        region_id = segment['region_id']
+        size = segment['size']
+        investment = segment['investment']
+
+        # 1) сначала получаем N списков статей расходов по нескольким LLM
+        prompt = load_prompt('expenses.txt', {
+            'industry_name': industries[industry_id],
+            'region_name': regions[region_id],
+            'budget': str(investment)
+        })
+
+        expenses = ''
+        for config in llm_configs:
+            # получаем ответ от LLM на наш промпт
+            expenses = expenses + '\n' + ask_llm(config, prompt) + '\n'
+        logging.info(f'Все статьи расходов от всех LLM {expenses}')
+
+        # 2) из всех списков формируем один
+        prompt = load_prompt('expenses-merge.txt', {
+            'industry_name': industries[industry_id],
+            'list': expenses
+        })
+        # просим объединить статьи у одной LLM (любая должна справиться)
+        merged_expenses = ask_llm(llm_configs[0], prompt)
+
+        # 3) получаем суммы по статьям расходов
+        prompt = load_prompt('expenses-sum.txt', {
+            'industry_name': industries[industry_id],
+            'region_name': regions[region_id],
+            'budget': str(investment),
+            'list': merged_expenses
+        })
+        # todo remove next line
+        break
+
+
+def load_industries():
+    industries = {}
+    logging.info(f'Читаем файл со списком отраслей/индустрий {INDUSTRIES_FILE}')
+    with open(INDUSTRIES_FILE, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file, delimiter=',')
         for row in reader:
-            print('-' * 80)
-            print(f'IDEA: idea=<{row['idea']}>, region=<{row['region']}>, budget=<{row['budget']}>')
-            prompt = load_prompt('costs.txt', {
-                'idea': row['idea'],
-                'region_name': row['region'],
-                'budget': row['budget']
+            industries[int(row['industry_id'])] = row['industry_name']
+    logging.debug(f'industries: {industries}')
+    return industries
+
+
+def load_regions():
+    regions = {}
+    logging.info(f'Читаем файл со списком регионов {REGIONS_FILE}')
+    with open(REGIONS_FILE, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file, delimiter=',')
+        for row in reader:
+            regions[int(row['region_id'])] = row['region_name']
+    logging.debug(f'regions: {regions}')
+    return regions
+
+
+def load_segments():
+    segments = []
+    logging.info(f'Читаем файл со списком инвестиций/сегментов {SEGMENTS_FILE}')
+    with open(SEGMENTS_FILE, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file, delimiter=',')
+        for row in reader:
+            segments.append({
+                'industry_id': int(row['industry_id']),
+                'region_id': int(row['region_id']),
+                'size': row['sizeofbusiness'],
+                'investment': int(row['initialinvestment'])
             })
-            print('PROMPT:')
-            print(prompt)
-            print('-' * 80)
-            for llm, config in CONFIG['llms']['configs'].items():
-                # пропускаем неактивные LLM
-                if not config['enabled']:
-                    continue
-                client = config['client']
-                print(f'INFO: LLM={llm} model={config['model']}')
-                print('ANSWER:')
-                # получаем ответ от LLM на наш промпт
-                ask_llm(llm, config, prompt)
-                print('-' * 80)
+    logging.debug(f'segments: {segments}')
+    return segments
 
 
 # создаем директорию для логов
@@ -62,13 +131,13 @@ def save_log(log, model, sfx):
 
 # основной метод запроса данных у LLM, используем конфиг для определения конкретного варианта сервиса
 # запрос и ответ логируем
-def ask_llm(llm_name, config, prompt):
+def ask_llm(config, prompt):
     model = config['model']
     save_log(prompt, model, 'req')
     client = config['client']
     response = None
 
-    match llm_name:
+    match config['name']:
         case 'gigachat':
             response = client.chat(prompt)
         case 'deepseek':
@@ -88,10 +157,9 @@ def ask_llm(llm_name, config, prompt):
             )
 
     save_log(response, model, 'resp')
-    if llm_name == 'openai':
-        print(response.output_text)
-    else:
-        print(response.choices[0].message.content)
+    answer = response.output_text if config['name'] == 'openai' else response.choices[0].message.content
+    logging.info(answer)
+    return answer
 
 
 # загружаем промпт с подстановкой параметров
@@ -104,13 +172,18 @@ def load_prompt(prompt_name, params):
 
 
 # загружает конфигурацию из config.yaml, создаем клиента для выбранной LLM
-def load_config():
-    print('CONFIG: загружаем конфигурацию по поддерживаемым LLM')
-    for llm, config in CONFIG['llms']['configs'].items():
+def load_llm_config():
+    logging.info('Загружаем конфигурацию по поддерживаемым LLM')
+    result = []
+    for config in CONFIG['LLM']['config']:
+        name = config['name']
         enabled = bool(config['enabled'])
+        logging.info(f'LLM name={name}, enabled={enabled}')
+        if not enabled:
+            continue
         client = None
         if enabled:
-            match llm:
+            match name:
                 case 'openai' | 'deepseek':
                     client = OpenAI(
                         api_key=config['api-key'],
@@ -123,9 +196,11 @@ def load_config():
                         model=config['model']
                     )
                 case _:
-                    print(f'LLM {llm} не поддерживается')
+                    print(f'LLM {name} не поддерживается')
                     exit(1)
             config['client'] = client
+        result.append(config)
+    return result
 
 
 # GigaChat: получение access_token
@@ -140,9 +215,9 @@ def get_token():
                 raise Exception('Token expired')
             token['cached'] = True
     except Exception as e:
-        print(f'WARN: {e}')
+        logging.warning(e)
         token = authenticate(CONFIG['llms']['configs']['gigachat'])
-    print(f'token = {token}')
+    logging.debug(f'token = {token}')
     return token
 
 
