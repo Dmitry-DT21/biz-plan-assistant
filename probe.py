@@ -37,7 +37,7 @@ def main():
         if segment['region_id'] not in regions:
             continue
         filtered_segments.append(segment)
-    logging.info(f'Исходный список {len(segments)}, отфильтрованный {len(filtered_segments)}')
+    logging.info(f'Исходный список {len(segments)}, отфильтрованный по сегментам и регионам {len(filtered_segments)}')
 
     # основной цикл
     for segment in filtered_segments:
@@ -45,37 +45,74 @@ def main():
         region_id = segment['region_id']
         size = segment['size']
         investment = segment['investment']
+        logging.info(f'industry_id={industry_id}, region_id={region_id}, size={size}, investment={investment}')
 
-        # 1) сначала получаем N списков статей расходов по нескольким LLM
-        prompt = load_prompt('expenses.txt', {
-            'industry_name': industries[industry_id],
-            'region_name': regions[region_id],
-            'budget': str(investment)
-        })
-
-        expenses = ''
-        for config in llm_configs:
-            # получаем ответ от LLM на наш промпт
-            expenses = expenses + '\n' + ask_llm(config, prompt) + '\n'
-        logging.info(f'Все статьи расходов от всех LLM {expenses}')
+        # 1) сначала получаем список статей затрат по каждой LLM
+        expenses = step1_init(llm_configs, industries[industry_id], regions[region_id], str(investment))
 
         # 2) из всех списков формируем один
-        prompt = load_prompt('expenses-merge.txt', {
-            'industry_name': industries[industry_id],
-            'list': expenses
-        })
-        # просим объединить статьи у одной LLM (любая должна справиться)
-        merged_expenses = ask_llm(llm_configs[0], prompt)
+        merged_expenses = step2_merge(llm_configs, regions[region_id], expenses)
 
-        # 3) получаем суммы по статьям расходов
-        prompt = load_prompt('expenses-sum.txt', {
-            'industry_name': industries[industry_id],
-            'region_name': regions[region_id],
-            'budget': str(investment),
-            'list': merged_expenses
-        })
+        # 3) добавляем суммы по статьям затрат
+        expenses_with_sum = step3_sum(llm_configs, industries[industry_id], regions[region_id], investment, merged_expenses)
+
+        # 4) считаем средние затраты по объединенному списку у одной LLM
+        avg_expenses = step4(llm_configs, expenses_with_sum)
+
+        # 5) сохраняем результат
+        # todo TBD
+
         # todo remove next line
         break
+
+
+def step1_init(llm_configs, industry, region, investment):
+    prompt = load_prompt('01-init.txt', {
+        'industry_name': industry,
+        'region_name': region,
+        'budget': investment
+    })
+    expenses = ''
+    for config in llm_configs:
+        # получаем ответ от LLM на наш промпт
+        expenses = expenses + '\n' + ask_llm(config, prompt) + '\n'
+    logging.info(f'"Этап 1: Все статьи затрат от всех LLM\n{expenses}')
+    return expenses
+
+
+def step2_merge(llm_configs, industry, expenses):
+    prompt = load_prompt('02-merge-lists.txt', {
+        'industry_name': industry,
+        'list': expenses
+    })
+    # объединяем статьи (используем одну LLM, любая должна справиться)
+    merged_expenses = ask_llm(llm_configs[0], prompt)
+    logging.info(f'Этап 2: Объединенный список затрат (по нему будем собирать суммы)\n{merged_expenses}')
+    return merged_expenses
+
+
+def step3_sum(llm_configs, industry, region, investment, merged_expenses):
+    prompt = load_prompt('03-add-sum.txt', {
+        'industry_name': industry,
+        'region_name': region,
+        'budget': str(investment),
+        'list': merged_expenses
+    })
+    expenses_with_sum = ''
+    for config in llm_configs:
+        # получаем ответ от LLM на наш промпт
+        expenses_with_sum = expenses_with_sum + '\n' + ask_llm(config, prompt) + '\n'
+    logging.info(f'Этап 3: Добавляем сумму затрат\n{expenses_with_sum}')
+    return expenses_with_sum
+
+
+def step4(llm_configs, expenses_with_sum):
+    prompt = load_prompt('04-avg.txt', {
+        'list': expenses_with_sum
+    })
+    avg_expenses = ask_llm(llm_configs[0], prompt)
+    logging.info(f'Этап 4: Объединенный список затрат со средними суммами\n{avg_expenses}')
+    return avg_expenses
 
 
 def load_industries():
@@ -158,7 +195,7 @@ def ask_llm(config, prompt):
 
     save_log(response, model, 'resp')
     answer = response.output_text if config['name'] == 'openai' else response.choices[0].message.content
-    logging.info(answer)
+    # logging.info(answer)
     return answer
 
 
@@ -191,7 +228,7 @@ def load_llm_config():
                     )
                 case 'gigachat':
                     client = GigaChat(
-                        access_token=get_token()['access_token'],
+                        access_token=get_token(config)['access_token'],
                         base_url=config['api'],
                         model=config['model']
                     )
@@ -205,7 +242,7 @@ def load_llm_config():
 
 # GigaChat: получение access_token
 # если токен протух, то заново выполняем аутентификацию
-def get_token():
+def get_token(config):
     token = dict([])
     try:
         with open('token.json', 'r', encoding='utf-8') as f:
@@ -216,7 +253,7 @@ def get_token():
             token['cached'] = True
     except Exception as e:
         logging.warning(e)
-        token = authenticate(CONFIG['llms']['configs']['gigachat'])
+        token = authenticate(config)
     logging.debug(f'token = {token}')
     return token
 
