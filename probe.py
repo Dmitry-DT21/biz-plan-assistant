@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -14,6 +15,7 @@ from openai import OpenAI
 CONFIG = EnvYAML('config.yaml')  # Load and parse the file automatically substituting env variables
 PROMPTS_PATH = CONFIG['prompts']['path']
 LOGS_PATH = CONFIG['logs']['path']
+OUTPUT_FILE = CONFIG['data']['output'] + '/' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
 INDUSTRIES_FILE = CONFIG['data']['industries']
 REGIONS_FILE = CONFIG['data']['regions']
 SEGMENTS_FILE = CONFIG['data']['segments']
@@ -21,8 +23,8 @@ TOKEN_FILE_NAME = 'token.json'
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     init_logs()
+    init_output()
     llm_configs = load_llm_config()
 
     industries = load_industries()
@@ -54,13 +56,14 @@ def main():
         merged_expenses = step2_merge(llm_configs, regions[region_id], expenses)
 
         # 3) добавляем суммы по статьям затрат
-        expenses_with_sum = step3_sum(llm_configs, industries[industry_id], regions[region_id], investment, merged_expenses)
+        expenses_with_sum = step3_sum(llm_configs, industries[industry_id], regions[region_id], investment,
+                                      merged_expenses)
 
         # 4) считаем средние затраты по объединенному списку у одной LLM
         avg_expenses = step4(llm_configs, expenses_with_sum)
 
         # 5) сохраняем результат
-        # todo TBD
+        step5_result(industry_id, region_id, size, avg_expenses)
 
         # todo remove next line
         break
@@ -115,6 +118,22 @@ def step4(llm_configs, expenses_with_sum):
     return avg_expenses
 
 
+def step5_result(industry_id, region_id, investment_size, avg_expenses):
+    for s in avg_expenses.split('\n'):
+        values = s.split('|')
+        if len(values) != 4:
+            continue
+        expense_name = values[1].strip()
+        sum = int(values[2].replace(' ', ''))
+        append_output({
+            'industry_id': industry_id,
+            'region_id': region_id,
+            'size': investment_size,
+            'expense': expense_name,
+            'amount': sum,
+        })
+
+
 def load_industries():
     industries = {}
     logging.info(f'Читаем файл со списком отраслей/индустрий {INDUSTRIES_FILE}')
@@ -156,6 +175,31 @@ def load_segments():
 # создаем директорию для логов
 def init_logs():
     Path(LOGS_PATH).mkdir(parents=True, exist_ok=True)
+    # default log level
+    level = logging.ERROR
+    match CONFIG['logs']['level']:
+        case 'DEBUG':
+            level = logging.DEBUG
+        case 'INFO':
+            level = logging.INFO
+        case 'WARN':
+            level = logging.WARN
+    logging.basicConfig(
+        level=level,
+        format='%(levelname)s: %(message)s')
+
+
+# создаем директорию для сохранения результата работы
+def init_output():
+    Path(CONFIG['data']['output']).mkdir(parents=True, exist_ok=True)
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+        f.write('region_id,industry_id,size,expense,amount\n')
+
+
+# добавляем строку с данными в выходной файл результата
+def append_output(data):
+    with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
+        f.write(f'{data['region_id']},{data['industry_id']},{data['size']},"{data['expense']}",{data['amount']}\n')
 
 
 # сохранение строки в папке для логов
@@ -286,4 +330,15 @@ def save_token_to_file(s):
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    init_output()
+    step5_result(301, 3601, 'S','''
+| Аренда и залог                     | 130 000       |
+| Оборудование                        | 390 000       |
+| Мебель                              | 105 000       |
+| Расходные материалы и косметика      | 100 000       |
+| Маркетинг и реклама                 | 50 000        |
+| Учетная система и программное обеспечение| 20 000      |
+| Коммунальные платежи и связь         | 17 500        |
+| Резервный фонд (непредвиденные расходы)| 72 500       |
+''')
