@@ -4,7 +4,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 
 import requests
@@ -39,15 +39,20 @@ def main():
         if segment['region_id'] not in regions:
             continue
         filtered_segments.append(segment)
+    offset = 10
+    limit = 10
     logging.info(f'Исходный список {len(segments)}, отфильтрованный по сегментам и регионам {len(filtered_segments)}')
 
     # основной цикл
-    for segment in filtered_segments:
+    n = 0
+    for segment in filtered_segments[offset:offset + limit]:
         industry_id = segment['industry_id']
         region_id = segment['region_id']
         size = segment['size']
         investment = segment['investment']
-        logging.info(f'industry_id={industry_id}, region_id={region_id}, size={size}, investment={investment}')
+        logging.info(
+            f'industry_id={industry_id}, region_id={region_id}, size={size}, investment={investment}, offset={offset}, n={n}')
+        n += 1
 
         # 1) сначала получаем список статей затрат по каждой LLM
         expenses = step1_init(llm_configs, industries[industry_id], regions[region_id], str(investment))
@@ -65,8 +70,7 @@ def main():
         # 5) сохраняем результат
         step5_result(industry_id, region_id, size, avg_expenses)
 
-        # todo remove next line
-        break
+    logging.info(f'count={n}')
 
 
 def step1_init(llm_configs, industry, region, investment):
@@ -89,7 +93,7 @@ def step2_merge(llm_configs, industry, expenses):
         'list': expenses
     })
     # объединяем статьи (используем одну LLM, любая должна справиться)
-    merged_expenses = ask_llm(llm_configs[0], prompt)
+    merged_expenses = ask_llm(llm_configs[1], prompt)
     logging.info(f'Этап 2: Объединенный список затрат (по нему будем собирать суммы)\n{merged_expenses}')
     return merged_expenses
 
@@ -113,7 +117,7 @@ def step4(llm_configs, expenses_with_sum):
     prompt = load_prompt('04-avg.txt', {
         'list': expenses_with_sum
     })
-    avg_expenses = ask_llm(llm_configs[0], prompt)
+    avg_expenses = ask_llm(llm_configs[1], prompt)
     logging.info(f'Этап 4: Объединенный список затрат со средними суммами\n{avg_expenses}')
     return avg_expenses
 
@@ -124,7 +128,10 @@ def step5_result(industry_id, region_id, investment_size, avg_expenses):
         if len(values) != 4:
             continue
         expense_name = values[1].strip()
-        sum = int(values[2].replace(' ', ''))
+        try:
+            sum = int(values[2].replace(' ', ''))
+        except ValueError:
+            continue
         append_output({
             'industry_id': industry_id,
             'region_id': region_id,
@@ -185,8 +192,9 @@ def init_logs():
         case 'WARN':
             level = logging.WARN
     logging.basicConfig(
+        filename=f'{LOGS_PATH}/{date.today()}.log',
         level=level,
-        format='%(levelname)s: %(message)s')
+        format='%(asctime)s %(levelname)s: %(message)s')
 
 
 # создаем директорию для сохранения результата работы
@@ -205,7 +213,7 @@ def append_output(data):
 # сохранение строки в папке для логов
 # название файла - временная метка плюс суффикс для идентификации запрос/ответ
 def save_log(log, model, sfx):
-    tm = time.time_ns()
+    tm = f"{datetime.now():%Y%m%d-%H%M%S}"
     with open(f'{LOGS_PATH}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
         f.write(str(log))
 
@@ -220,7 +228,13 @@ def ask_llm(config, prompt):
 
     match config['name']:
         case 'gigachat':
-            response = client.chat(prompt)
+            try:
+                response = client.chat(prompt)
+            except Exception:
+                # 401
+                client = initGiga(config)
+                config['client'] = client
+                response = client.chat(prompt)
         case 'deepseek':
             response = client.chat.completions.create(
                 model=model,
@@ -228,8 +242,8 @@ def ask_llm(config, prompt):
                     {"role": "user", "content": prompt},
                 ],
                 stream=False,
-                reasoning_effort="high",
-                extra_body={"thinking": {"type": "enabled"}}
+                # reasoning_effort="high",
+                # extra_body={"thinking": {"type": "enabled"}}
             )
         case 'openai':
             response = client.responses.create(
@@ -271,17 +285,22 @@ def load_llm_config():
                         base_url=config['api']
                     )
                 case 'gigachat':
-                    client = GigaChat(
-                        access_token=get_token(config)['access_token'],
-                        base_url=config['api'],
-                        model=config['model']
-                    )
+                    client = initGiga(config)
                 case _:
                     print(f'LLM {name} не поддерживается')
                     exit(1)
             config['client'] = client
         result.append(config)
     return result
+
+
+def initGiga(config):
+    token = get_token(config)['access_token']
+    return GigaChat(
+        access_token=token,
+        base_url=config['api'],
+        model=config['model']
+    )
 
 
 # GigaChat: получение access_token
@@ -291,8 +310,7 @@ def get_token(config):
     try:
         with open('token.json', 'r', encoding='utf-8') as f:
             token = json.load(f)
-            expires_at = token['expires_at']
-            if time.time() * 1_000 >= expires_at - 3_000:
+            if token_expired(token):
                 raise Exception('Token expired')
             token['cached'] = True
     except Exception as e:
@@ -300,6 +318,12 @@ def get_token(config):
         token = authenticate(config)
     logging.debug(f'token = {token}')
     return token
+
+
+def token_expired(token):
+    expires_at = token['expires_at']
+    # ns -> ms and 3 seconds for reserve
+    return True if time.time() * 1_000 >= expires_at - 3_000 else False
 
 
 # GigaChat: аутентификация и получение access_token
@@ -330,15 +354,15 @@ def save_token_to_file(s):
 
 
 if __name__ == "__main__":
-    # main()
-    init_output()
-    step5_result(301, 3601, 'S','''
-| Аренда и залог                     | 130 000       |
-| Оборудование                        | 390 000       |
-| Мебель                              | 105 000       |
-| Расходные материалы и косметика      | 100 000       |
-| Маркетинг и реклама                 | 50 000        |
-| Учетная система и программное обеспечение| 20 000      |
-| Коммунальные платежи и связь         | 17 500        |
-| Резервный фонд (непредвиденные расходы)| 72 500       |
-''')
+    main()
+#     init_output()
+#     step5_result(301, 3601, 'S','''
+# | Аренда и залог                     | 130 000       |
+# | Оборудование                        | 390 000       |
+# | Мебель                              | 105 000       |
+# | Расходные материалы и косметика      | 100 000       |
+# | Маркетинг и реклама                 | 50 000        |
+# | Учетная система и программное обеспечение| 20 000      |
+# | Коммунальные платежи и связь         | 17 500        |
+# | Резервный фонд (непредвиденные расходы)| 72 500       |
+# ''')
