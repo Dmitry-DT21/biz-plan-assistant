@@ -2,6 +2,7 @@ import base64
 import csv
 import json
 import logging
+import sys
 import time
 import uuid
 from datetime import datetime, date
@@ -15,6 +16,7 @@ from openai import OpenAI
 CONFIG = EnvYAML('config.yaml')  # Load and parse the file automatically substituting env variables
 PROMPTS_PATH = CONFIG['prompts']['path']
 LOGS_PATH = CONFIG['logs']['path']
+LOGS_OUTPUT_PATH = CONFIG['logs']['output_path']
 OUTPUT_FILE = CONFIG['data']['output'] + '/' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
 INDUSTRIES_FILE = CONFIG['data']['industries']
 REGIONS_FILE = CONFIG['data']['regions']
@@ -31,6 +33,7 @@ def main():
     regions = load_regions()
     segments = load_segments()
 
+    # tups50 = set()
     # фильтруем сегменты по доступным регионам и отраслям
     filtered_segments = []
     for segment in segments:
@@ -39,8 +42,48 @@ def main():
         if segment['region_id'] not in regions:
             continue
         filtered_segments.append(segment)
-    offset = 10
-    limit = 10
+        # tups50.add((int(segment['industry_id']), int(segment['region_id']), segment['size']))
+        # if len(tups50) == 50:
+        #     break
+
+    # tups = set()
+    # with open('output/result-50.csv', mode='r', encoding='utf-8') as file:
+    #     reader = csv.DictReader(file, delimiter=',')
+    #     for row in reader:
+    #         tups.add((int(row['industry_id']), int(row['region_id']), row['size']))
+    #
+    # print(tups50 - tups)
+    # (401, 6101, 'M'), (3, 3401, 'M'), (105, 6601, 'S'), (401, 2401, 'S')
+    # filtered_segments = [
+    #     {
+    #         "industry_id": 401,
+    #         "region_id": 6101,
+    #         "size": 'M',
+    #         "investment": 19965000
+    #     },
+    #     {
+    #         "industry_id": 3,
+    #         "region_id": 3401,
+    #         "size": 'M',
+    #         "investment": 1080000
+    #     },
+    #     {
+    #         "industry_id": 105,
+    #         "region_id": 6601,
+    #         "size": 'S',
+    #         "investment": 575000
+    #     },
+    #     {
+    #         "industry_id": 401,
+    #         "region_id": 2401,
+    #         "size": 'S',
+    #         "investment": 6760000
+    #     }
+    #     ]
+    #     # (401, 6101, 'M'), (3, 3401, 'M'), (105, 6601, 'S'), (401, 2401, 'S')]
+
+    offset = 50
+    limit = 1
     logging.info(f'Исходный список {len(segments)}, отфильтрованный по сегментам и регионам {len(filtered_segments)}')
 
     # основной цикл
@@ -93,7 +136,7 @@ def step2_merge(llm_configs, industry, expenses):
         'list': expenses
     })
     # объединяем статьи (используем одну LLM, любая должна справиться)
-    merged_expenses = ask_llm(llm_configs[1], prompt)
+    merged_expenses = ask_llm(llm_configs[0], prompt)
     logging.info(f'Этап 2: Объединенный список затрат (по нему будем собирать суммы)\n{merged_expenses}')
     return merged_expenses
 
@@ -117,19 +160,27 @@ def step4(llm_configs, expenses_with_sum):
     prompt = load_prompt('04-avg.txt', {
         'list': expenses_with_sum
     })
-    avg_expenses = ask_llm(llm_configs[1], prompt)
+    avg_expenses = ask_llm(llm_configs[0], prompt)
     logging.info(f'Этап 4: Объединенный список затрат со средними суммами\n{avg_expenses}')
     return avg_expenses
 
 
 def step5_result(industry_id, region_id, investment_size, avg_expenses):
     for s in avg_expenses.split('\n'):
-        values = s.split('|')
-        if len(values) != 4:
+        if s == '':
             continue
-        expense_name = values[1].strip()
+        row = s.split('|')
+        values = []
+        for v in row:
+            if v == '':
+                continue
+            values.append(v)
+        if len(values) < 2:
+            logging.warning(f'skip industry_id={industry_id}, region_id={region_id}, investment_size={investment_size}')
+            continue
+        expense_name = values[0].strip()
         try:
-            sum = int(values[2].replace(' ', ''))
+            sum = int(values[1].replace(' ', ''))
         except ValueError:
             continue
         append_output({
@@ -191,10 +242,15 @@ def init_logs():
             level = logging.INFO
         case 'WARN':
             level = logging.WARN
+    Path(LOGS_OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
-        filename=f'{LOGS_PATH}/{date.today()}.log',
         level=level,
-        format='%(asctime)s %(levelname)s: %(message)s')
+        format='%(asctime)s %(levelname)s: %(message)s',
+        handlers=[
+            logging.FileHandler(f'{LOGS_OUTPUT_PATH}/{date.today():%Y%m%d}.log'),  # Logs to a file
+            logging.StreamHandler(sys.stdout)  # Logs to the console
+        ]
+    )
 
 
 # создаем директорию для сохранения результата работы
@@ -213,7 +269,7 @@ def append_output(data):
 # сохранение строки в папке для логов
 # название файла - временная метка плюс суффикс для идентификации запрос/ответ
 def save_log(log, model, sfx):
-    tm = f"{datetime.now():%Y%m%d-%H%M%S}"
+    tm = f"{datetime.now():%Y%m%d-%H%M%S%f}"
     with open(f'{LOGS_PATH}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
         f.write(str(log))
 
@@ -253,7 +309,7 @@ def ask_llm(config, prompt):
 
     save_log(response, model, 'resp')
     answer = response.output_text if config['name'] == 'openai' else response.choices[0].message.content
-    # logging.info(answer)
+    # logging.debug(answer)
     return answer
 
 
@@ -356,13 +412,30 @@ def save_token_to_file(s):
 if __name__ == "__main__":
     main()
 #     init_output()
-#     step5_result(301, 3601, 'S','''
-# | Аренда и залог                     | 130 000       |
-# | Оборудование                        | 390 000       |
-# | Мебель                              | 105 000       |
-# | Расходные материалы и косметика      | 100 000       |
-# | Маркетинг и реклама                 | 50 000        |
-# | Учетная система и программное обеспечение| 20 000      |
-# | Коммунальные платежи и связь         | 17 500        |
-# | Резервный фонд (непредвиденные расходы)| 72 500       |
+#     step5_result(1, 6101, 'L','''
+# Аренда и депозит | 716667
+# Ремонт и отделка помещения | 1533333
+# Торговый, холодильный и кассовое оборудование | 2900000
+# Охрана и видеонаблюдение | 273333
+# Первичная закупка товаров | 2100000
+# Позиционирование: вывески, наружная реклама, POS-материалы | 483333
+# Лицензирование и разрешительные документы | 123333
+# Программное обеспечение и кассовые системы | 196667
+# Запуск бизнеса: реклама и продвижение | 516667
+# Оборотный капитал и резервный фонд | 1253333
+# Франшиза/паушальный взнос | 243333
+# ''')
+
+#     step5_result(702, 2401, 'M', '''
+# Аренда помещения и обеспечительный платеж | 75000
+# Ремонт и оформление офиса/точки | 85000
+# Закупка инструментов, оборудования и мебели | 126667
+# Первичные запасы расходных материалов и демонстрационные образцы | 36667
+# Маркетинг, реклама и продвижение | 40000
+# Сайт, CRM, телефония и программное обеспечение | 18333
+# Лицензионные платежи и регистрация бизнеса | 10000
+# Оплата первичного фонда зарплаты сотрудникам | 76667
+# Обучение сотрудников и аттестационные мероприятия | 11667
+# Транспортные и сопутствующие операционные расходы | 13333
+# Паушальный взнос по франшизе (при наличии) | 51667
 # ''')

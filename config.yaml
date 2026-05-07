@@ -6,6 +6,7 @@ data:
 logs:
   path: logs
   level: INFO
+  output_path: logs-output
 prompts:
   path: prompts
 LLM:
@@ -16,8 +17,8 @@ LLM:
       auth: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
       api: https://gigachat.devices.sberbank.ru/api/v1
 #      model: GigaChat-2
-      model: GigaChat-2-Pro
-#      model: GigaChat-2-Max
+#      model: GigaChat-2-Pro
+      model: GigaChat-2-Max
       enabled: true
     - name: deepseek
       api-key: ${DEEPSEEK_API_KEY}
