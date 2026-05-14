@@ -1,88 +1,8 @@
-import base64
-import csv
-import json
-import logging
-import sys
-import time
-import uuid
-from datetime import datetime, date
-from pathlib import Path
-
-import requests
-from envyaml import EnvYAML
-from gigachat import GigaChat
-from openai import OpenAI
-
-CONFIG = EnvYAML('config.yaml')  # Load and parse the file automatically substituting env variables
-PROMPTS_PATH = CONFIG['prompts']['path']
-LOGS_PATH = CONFIG['logs']['path']
-LOGS_OUTPUT_PATH = CONFIG['logs']['output_path']
-OUTPUT_FILE = CONFIG['data']['output'] + '/' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
-INDUSTRIES_FILE = CONFIG['data']['industries']
-REGIONS_FILE = CONFIG['data']['regions']
-SEGMENTS_FILE = CONFIG['data']['segments']
-TOKEN_FILE_NAME = 'token.json'
+from myglobal import *
 
 
 def main():
-    init_logs()
-    init_output()
-    llm_configs = load_llm_config()
-
-    industries = load_industries()
-    regions = load_regions()
-    segments = load_segments()
-
-    # tups50 = set()
-    # фильтруем сегменты по доступным регионам и отраслям
-    filtered_segments = []
-    for segment in segments:
-        if segment['industry_id'] not in industries:
-            continue
-        if segment['region_id'] not in regions:
-            continue
-        filtered_segments.append(segment)
-        # tups50.add((int(segment['industry_id']), int(segment['region_id']), segment['size']))
-        # if len(tups50) == 50:
-        #     break
-
-    # tups = set()
-    # with open('output/result-50.csv', mode='r', encoding='utf-8') as file:
-    #     reader = csv.DictReader(file, delimiter=',')
-    #     for row in reader:
-    #         tups.add((int(row['industry_id']), int(row['region_id']), row['size']))
-    #
-    # print(tups50 - tups)
-    # (401, 6101, 'M'), (3, 3401, 'M'), (105, 6601, 'S'), (401, 2401, 'S')
-    # filtered_segments = [
-    #     {
-    #         "industry_id": 401,
-    #         "region_id": 6101,
-    #         "size": 'M',
-    #         "investment": 19965000
-    #     },
-    #     {
-    #         "industry_id": 3,
-    #         "region_id": 3401,
-    #         "size": 'M',
-    #         "investment": 1080000
-    #     },
-    #     {
-    #         "industry_id": 105,
-    #         "region_id": 6601,
-    #         "size": 'S',
-    #         "investment": 575000
-    #     },
-    #     {
-    #         "industry_id": 401,
-    #         "region_id": 2401,
-    #         "size": 'S',
-    #         "investment": 6760000
-    #     }
-    #     ]
-    #     # (401, 6101, 'M'), (3, 3401, 'M'), (105, 6601, 'S'), (401, 2401, 'S')]
-
-    offset = 50
+    offset = 53
     limit = 1
     logging.info(f'Исходный список {len(segments)}, отфильтрованный по сегментам и регионам {len(filtered_segments)}')
 
@@ -94,7 +14,7 @@ def main():
         size = segment['size']
         investment = segment['investment']
         logging.info(
-            f'industry_id={industry_id}, region_id={region_id}, size={size}, investment={investment}, offset={offset}, n={n}')
+            f'industry={industries[industry_id]},{industry_id}, region={regions[region_id]},{region_id}, size={size}, investment={investment}, offset={offset}, n={n}')
         n += 1
 
         # 1) сначала получаем список статей затрат по каждой LLM
@@ -192,74 +112,6 @@ def step5_result(industry_id, region_id, investment_size, avg_expenses):
         })
 
 
-def load_industries():
-    industries = {}
-    logging.info(f'Читаем файл со списком отраслей/индустрий {INDUSTRIES_FILE}')
-    with open(INDUSTRIES_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=',')
-        for row in reader:
-            industries[int(row['industry_id'])] = row['industry_name']
-    logging.debug(f'industries: {industries}')
-    return industries
-
-
-def load_regions():
-    regions = {}
-    logging.info(f'Читаем файл со списком регионов {REGIONS_FILE}')
-    with open(REGIONS_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=',')
-        for row in reader:
-            regions[int(row['region_id'])] = row['region_name']
-    logging.debug(f'regions: {regions}')
-    return regions
-
-
-def load_segments():
-    segments = []
-    logging.info(f'Читаем файл со списком инвестиций/сегментов {SEGMENTS_FILE}')
-    with open(SEGMENTS_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=',')
-        for row in reader:
-            segments.append({
-                'industry_id': int(row['industry_id']),
-                'region_id': int(row['region_id']),
-                'size': row['sizeofbusiness'],
-                'investment': int(row['initialinvestment'])
-            })
-    logging.debug(f'segments: {segments}')
-    return segments
-
-
-# создаем директорию для логов
-def init_logs():
-    Path(LOGS_PATH).mkdir(parents=True, exist_ok=True)
-    # default log level
-    level = logging.ERROR
-    match CONFIG['logs']['level']:
-        case 'DEBUG':
-            level = logging.DEBUG
-        case 'INFO':
-            level = logging.INFO
-        case 'WARN':
-            level = logging.WARN
-    Path(LOGS_OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s %(levelname)s: %(message)s',
-        handlers=[
-            logging.FileHandler(f'{LOGS_OUTPUT_PATH}/{date.today():%Y%m%d}.log'),  # Logs to a file
-            logging.StreamHandler(sys.stdout)  # Logs to the console
-        ]
-    )
-
-
-# создаем директорию для сохранения результата работы
-def init_output():
-    Path(CONFIG['data']['output']).mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        f.write('region_id,industry_id,size,expense,amount\n')
-
-
 # добавляем строку с данными в выходной файл результата
 def append_output(data):
     with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
@@ -322,96 +174,33 @@ def load_prompt(prompt_name, params):
         return data
 
 
-# загружает конфигурацию из config.yaml, создаем клиента для выбранной LLM
-def load_llm_config():
-    logging.info('Загружаем конфигурацию по поддерживаемым LLM')
-    result = []
-    for config in CONFIG['LLM']['config']:
-        name = config['name']
-        enabled = bool(config['enabled'])
-        logging.info(f'LLM name={name}, enabled={enabled}')
-        if not enabled:
-            continue
-        client = None
-        if enabled:
-            match name:
-                case 'openai' | 'deepseek':
-                    client = OpenAI(
-                        api_key=config['api-key'],
-                        base_url=config['api']
-                    )
-                case 'gigachat':
-                    client = initGiga(config)
-                case _:
-                    print(f'LLM {name} не поддерживается')
-                    exit(1)
-            config['client'] = client
-        result.append(config)
-    return result
-
-
-def initGiga(config):
-    token = get_token(config)['access_token']
-    return GigaChat(
-        access_token=token,
-        base_url=config['api'],
-        model=config['model']
-    )
-
-
-# GigaChat: получение access_token
-# если токен протух, то заново выполняем аутентификацию
-def get_token(config):
-    token = dict([])
-    try:
-        with open('token.json', 'r', encoding='utf-8') as f:
-            token = json.load(f)
-            if token_expired(token):
-                raise Exception('Token expired')
-            token['cached'] = True
-    except Exception as e:
-        logging.warning(e)
-        token = authenticate(config)
-    logging.debug(f'token = {token}')
-    return token
-
-
-def token_expired(token):
-    expires_at = token['expires_at']
-    # ns -> ms and 3 seconds for reserve
-    return True if time.time() * 1_000 >= expires_at - 3_000 else False
-
-
-# GigaChat: аутентификация и получение access_token
-def authenticate(config):
-    client_id = config['client-id']
-    client_secret = config['client-secret']
-    auth_key_bytes = base64.b64encode((client_id + ':' + client_secret).encode('utf-8'))
-    auth_key = auth_key_bytes.decode('utf-8')
-    url = config['auth']
-    payload = {
-        'scope': 'GIGACHAT_API_PERS'
-    }
-    req_id = uuid.uuid4()
-    headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-        'RqUID': str(req_id),
-        'Authorization': 'Basic ' + auth_key
-    }
-    response = requests.request("POST", url, headers=headers, data=payload)
-    save_token_to_file(response.text)
-    return response.json()
-
-
-def save_token_to_file(s):
-    with open(TOKEN_FILE_NAME, "w") as f:
-        f.write(s)
-
-
 if __name__ == "__main__":
     main()
+#     init_logs()
 #     init_output()
+#     llm_configs = load_llm_config()
+#     prompt = load_prompt('04-critics1.txt', {
+#         'industry_name': 'Услуги по ремонту автомобилей',
+#         'region_name': 'Уфа',
+#         'budget': '400000',
+#         'list': '''
+# | Статья затрат              | Средняя сумма |
+# |---------------------------|---------------|
+# | Аренда и ремонт помещения | 120000        |
+# | Оборудование и инструмент  | 100000        |
+# | Запчасти и расходники      | 47500         |
+# | Организация клиентской зоны| 22500         |
+# | Зарплаты сотрудников       | 47500         |
+# | Маркетинг и реклама        | 22500         |
+# | Разрешительные документы   | 11500         |
+# | Общие коммунальные расходы| 10500         |
+# | Страховка                  | 6500          |
+# | Юридические консультации   | 11500         |
+# '''
+#     })
+#     answer = ask_llm(llm_configs[1], prompt)
+#     logging.info(answer)
+
 #     step5_result(1, 6101, 'L','''
 # Аренда и депозит | 716667
 # Ремонт и отделка помещения | 1533333
