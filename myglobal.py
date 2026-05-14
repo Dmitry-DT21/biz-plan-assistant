@@ -190,12 +190,73 @@ def save_token_to_file(s):
         f.write(s)
 
 
-if __name__ == "__main__":
-    init_logs()
-    init_output()
-    llm_configs = load_llm_config()
-    industries = load_industries()
-    regions = load_regions()
-    segments = load_segments()
-    filtered_segments = filter_segments(segments)
-    logging.info('myglobal module initialized')
+# добавляем строку с данными в выходной файл результата
+def append_output(data):
+    with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
+        f.write(f'{data['region_id']},{data['industry_id']},{data['size']},"{data['expense']}",{data['amount']}\n')
+
+
+# сохранение строки в папке для логов
+# название файла - временная метка плюс суффикс для идентификации запрос/ответ
+def save_log(log, model, sfx):
+    tm = f"{datetime.now():%Y%m%d-%H%M%S%f}"
+    with open(f'{LOGS_PATH}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
+        f.write(str(log))
+
+
+# загружаем промпт с подстановкой параметров
+def load_prompt(prompt_name, params):
+    with open(f'{PROMPTS_PATH}/{prompt_name}', 'r', encoding='utf-8') as f:
+        data = f.read()
+        for key, value in params.items():
+            data = data.replace('{' + key + '}', value)
+        return data
+
+
+# основной метод запроса данных у LLM, используем конфиг для определения конкретного варианта сервиса
+# запрос и ответ логируем
+def ask_llm(config, prompt):
+    model = config['model']
+    save_log(prompt, model, 'req')
+    client = config['client']
+    response = None
+
+    match config['name']:
+        case 'gigachat':
+            try:
+                response = client.chat(prompt)
+            except Exception:
+                # 401
+                client = initGiga(config)
+                config['client'] = client
+                response = client.chat(prompt)
+        case 'deepseek':
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                # reasoning_effort="high",
+                # extra_body={"thinking": {"type": "enabled"}}
+            )
+        case 'openai':
+            response = client.responses.create(
+                model=model,
+                input=prompt
+            )
+
+    save_log(response, model, 'resp')
+    answer = response.output_text if config['name'] == 'openai' else response.choices[0].message.content
+    # logging.debug(answer)
+    return answer
+
+
+init_logs()
+init_output()
+llm_configs = load_llm_config()
+industries = load_industries()
+regions = load_regions()
+segments = load_segments()
+filtered_segments = filter_segments(segments)
+logging.info('myglobal module initialized')
