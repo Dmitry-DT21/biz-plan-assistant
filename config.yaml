@@ -1,7 +1,7 @@
 data:
   industries: data/industries.csv
   regions: data/regions.csv
-  segments: data/segments.csv
+  segments: data/segments3.csv
   output: output
 logs:
   path: logs
@@ -32,4 +32,4 @@ LLM:
       model: gpt-5.4-mini
 #      model: gpt-5.4
 #      model: gpt-5.5
-      enabled: false
+      enabled: true

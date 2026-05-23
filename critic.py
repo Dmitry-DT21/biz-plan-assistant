@@ -11,13 +11,13 @@ def main():
 
     investments = {}
     expenses = {}
-    tups = []
-    expenses_file = 'output/result-50.csv'
+    tups = set()
+    expenses_file = 'output/result-3-ex.csv'
     with open(expenses_file, 'r') as f:
         reader = csv.DictReader(f, delimiter=',')
         for r in reader:
             tup = (int(r['industry_id']), int(r['region_id']), r['size'])
-            tups.append(tup)
+            tups.add(tup)
             investment = segment_investment[tup]
             investments[tup] = investment
             expenses.setdefault(tup, '| Статья затрат | Сумма |\n|---|---|')
@@ -28,16 +28,20 @@ def main():
     for tup in tups:
         investment = investments[tup]
         expense_list = expenses[tup]
+        industry = industries[tup[0]]
+        region = regions[tup[1]]
+        size = tup[2]
+        budget = str(investment)
         prompt = load_prompt('04-critics.txt', {
-            'industry_name': industries[tup[0]],
-            'region_name': regions[tup[1]],
-            'budget': str(investment),
+            'industry_name': industry,
+            'region_name': region,
+            'budget': budget,
             'list': expense_list
         })
-        logging.info(prompt)
-        answer = ask_llm(llm_configs[1], prompt)
+        logging.debug(prompt)
+        answer = ask_llm(llm_configs[2], prompt)
+        logging.info(f'{industry}, {region}, {size}, {budget}\n')
         logging.info(answer)
-        break
 
 
 if __name__ == "__main__":

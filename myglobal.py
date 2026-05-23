@@ -2,6 +2,7 @@ import base64
 import csv
 import json
 import logging
+import os
 import sys
 import uuid
 from datetime import datetime, date, time
@@ -99,8 +100,6 @@ def filter_segments(segments):
 # создаем директорию для сохранения результата работы
 def init_output():
     Path(CONFIG['data']['output']).mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        f.write('region_id,industry_id,size,expense,amount\n')
 
 
 # загружает конфигурацию из config.yaml, создаем клиента для выбранной LLM
@@ -192,8 +191,12 @@ def save_token_to_file(s):
 
 # добавляем строку с данными в выходной файл результата
 def append_output(data):
+    if not os.path.exists(OUTPUT_FILE):
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            f.write('region_id,industry_id,region,industry,size,expense,amount,min,max\n')
+
     with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
-        f.write(f'{data['region_id']},{data['industry_id']},{data['size']},"{data['expense']}",{data['amount']}\n')
+        f.write(f'{data['region_id']},{data['industry_id']},{data['region']},{data['industry']},{data['size']},"{data['expense']}",{data['amount']},{data['min']},{data['max']}\n')
 
 
 # сохранение строки в папке для логов
