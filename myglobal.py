@@ -4,8 +4,9 @@ import json
 import logging
 import os
 import sys
+import time
 import uuid
-from datetime import datetime, date, time
+from datetime import datetime, date
 from pathlib import Path
 
 import requests
@@ -70,31 +71,31 @@ def load_regions():
 
 
 def load_segments():
-    segments = []
+    result = []
     logging.info(f'Читаем файл со списком инвестиций/сегментов {SEGMENTS_FILE}')
     with open(SEGMENTS_FILE, mode='r', encoding='utf-8') as file:
         reader = csv.DictReader(file, delimiter=',')
         for row in reader:
-            segments.append({
+            result.append({
                 'industry_id': int(row['industry_id']),
                 'region_id': int(row['region_id']),
                 'size': row['sizeofbusiness'],
                 'investment': int(row['initialinvestment'])
             })
-    logging.debug(f'segments: {segments}')
-    return segments
+    logging.debug(f'segments: {result}')
+    return result
 
 
 def filter_segments(segments):
     # фильтруем сегменты по доступным регионам и отраслям
-    filtered_segments = []
+    filtered = []
     for segment in segments:
         if segment['industry_id'] not in industries:
             continue
         if segment['region_id'] not in regions:
             continue
-        filtered_segments.append(segment)
-    return filtered_segments
+        filtered.append(segment)
+    return filtered
 
 
 # создаем директорию для сохранения результата работы
