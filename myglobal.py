@@ -16,9 +16,9 @@ from openai import OpenAI
 
 CONFIG = EnvYAML('config.yaml')
 PROMPTS_PATH = CONFIG['prompts']['path']
-LOGS_PATH = CONFIG['logs']['path']
-LOGS_OUTPUT_PATH = CONFIG['logs']['output_path']
-OUTPUT_FILE = CONFIG['data']['output'] + '/' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
+LOGS_LLM_PATH = CONFIG['logs']['path']['llm']
+LOGS_OUTPUT_PATH = CONFIG['logs']['path']['output']
+OUTPUT_FILE = CONFIG['data']['output'] + '/' + datetime.now().strftime('%Y%m%d') + '.csv'
 INDUSTRIES_FILE = CONFIG['data']['industries']
 REGIONS_FILE = CONFIG['data']['regions']
 SEGMENTS_FILE = CONFIG['data']['segments']
@@ -27,7 +27,7 @@ TOKEN_FILE_NAME = 'token.json'
 
 # создаем директорию для логов
 def init_logs():
-    Path(LOGS_PATH).mkdir(parents=True, exist_ok=True)
+    Path(LOGS_LLM_PATH).mkdir(parents=True, exist_ok=True)
     # default log level
     level = logging.ERROR
     match CONFIG['logs']['level']:
@@ -52,7 +52,7 @@ def load_industries():
     industries = {}
     logging.info(f'Читаем файл со списком отраслей/индустрий {INDUSTRIES_FILE}')
     with open(INDUSTRIES_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=',')
+        reader = csv.DictReader(file, delimiter=';')
         for row in reader:
             industries[int(row['industry_id'])] = row['industry_name']
     logging.debug(f'industries: {industries}')
@@ -63,7 +63,7 @@ def load_regions():
     regions = {}
     logging.info(f'Читаем файл со списком регионов {REGIONS_FILE}')
     with open(REGIONS_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=',')
+        reader = csv.DictReader(file, delimiter=';')
         for row in reader:
             regions[int(row['region_id'])] = row['region_name']
     logging.debug(f'regions: {regions}')
@@ -74,18 +74,19 @@ def load_segments():
     result = []
     logging.info(f'Читаем файл со списком инвестиций/сегментов {SEGMENTS_FILE}')
     with open(SEGMENTS_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file, delimiter=',')
+        reader = csv.DictReader(file, delimiter=';')
         for row in reader:
             result.append({
                 'industry_id': int(row['industry_id']),
                 'region_id': int(row['region_id']),
-                'size': row['sizeofbusiness'],
-                'investment': int(row['initialinvestment'])
+                'size': row['size_of_business'],
+                'investment': int(row['initial_investment'])
             })
     logging.debug(f'segments: {result}')
     return result
 
 
+# unused?
 def filter_segments(segments):
     # фильтруем сегменты по доступным регионам и отраслям
     filtered = []
@@ -194,17 +195,17 @@ def save_token_to_file(s):
 def append_output(data):
     if not os.path.exists(OUTPUT_FILE):
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-            f.write('region_id,industry_id,region,industry,size,expense,amount,min,max\n')
+            f.write('industry_id;region_id;industry;region;size;expense;amount;min;max\n')
 
     with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
-        f.write(f'{data['region_id']},{data['industry_id']},{data['region']},{data['industry']},{data['size']},"{data['expense']}",{data['amount']},{data['min']},{data['max']}\n')
+        f.write(f'{data['industry_id']};{data['region_id']};{data['industry']};{data['region']};{data['size']};"{data['expense']}";{data['amount']};{data['min']};{data['max']}\n')
 
 
 # сохранение строки в папке для логов
 # название файла - временная метка плюс суффикс для идентификации запрос/ответ
 def save_log(log, model, sfx):
     tm = f"{datetime.now():%Y%m%d-%H%M%S%f}"
-    with open(f'{LOGS_PATH}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
+    with open(f'{LOGS_LLM_PATH}/{tm}_{model}_{sfx}.txt', 'w', encoding='utf-8') as f:
         f.write(str(log))
 
 
@@ -262,5 +263,5 @@ llm_configs = load_llm_config()
 industries = load_industries()
 regions = load_regions()
 segments = load_segments()
-filtered_segments = filter_segments(segments)
+# filtered_segments = filter_segments(segments)
 logging.info('myglobal module initialized')

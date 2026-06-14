@@ -2,6 +2,9 @@ from myglobal import *
 
 
 def main():
+    # mock
+    filtered_segments = []
+
     offset = 0
     limit = 3
     logging.info(f'Исходный список {len(segments)}, отфильтрованный по сегментам и регионам {len(filtered_segments)}')
