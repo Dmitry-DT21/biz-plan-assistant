@@ -243,7 +243,7 @@ def ask_llm(config, prompt):
                 ],
                 stream=False,
                 # reasoning_effort="high",
-                # extra_body={"thinking": {"type": "enabled"}}
+                extra_body={"thinking": {"type": "disabled"}}
             )
         case 'openai':
             response = client.responses.create(

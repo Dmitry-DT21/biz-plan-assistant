@@ -3,45 +3,53 @@ from myglobal import *
 
 def main():
     logging.info("Generating expenses v2")
-    target_regions = [77, 78, 52]
-    target_industries = [20101, 100101]
+    target_regions = [10, 23, 50, 77, 78, 2301, 3601, 5201, 5401, 5501]
+    # target_industries = [20206, 50303, 60303, 90102, 90109, 100101, 131301, 140607, 150202, 181801]
+    # target_regions = [5401]
+    target_industries = [20206]
 
     segm_by_reg_ind = get_investment(segments, target_regions, target_industries)
     logging.debug(f'investments by (region, industry) = {segm_by_reg_ind}')
 
-    # step 1 - get expenses list by every industry
-    for i in target_industries:
-        industry_name = industries[i]
-        logging.info(f'Process industry: industry_id = {i} industry = {industry_name}')
-        prompt = load_prompt('01-init-v2.txt', {
-            'industry_name': industry_name,
-        })
-        expenses = ''
-        for config in llm_configs:
-            expenses = expenses + '\n' + ask_llm(config, prompt) + '\n'
-        logging.info(f'Step 1: gather expenses, industry_id={i}\n{expenses}')
-        save_file(f'{i}_expense_list.md', expenses)
+    # # step 1 - get expenses list by every industry
+    # for i in target_industries:
+    #     industry_name = industries[i]
+    #     logging.info(f'Process industry: industry_id = {i} industry = {industry_name}')
+    #     prompt = load_prompt('01-init-v2.txt', {
+    #         'industry_name': industry_name,
+    #     })
+    #     expenses = ''
+    #     for config in llm_configs:
+    #         if config['name'] != 'openai':
+    #             continue
+    #         expenses = expenses + '\n' + ask_llm(config, prompt) + '\n'
+    #     logging.info(f'Step 1: gather expenses, industry_id={i}\n{expenses}')
+    #     save_file(f'{i}_expense_list.md', expenses)
 
-    # step 2 - merge lists
-    for i in target_industries:
-        industry_name = industries[i]
-        expenses = load_file(f'{i}_expense_list.md')
-        prompt = load_prompt('02-merge-lists-v2.txt', {
-            'industry_name': industry_name,
-            'list': expenses
-        })
-        # объединяем статьи (используем одну LLM, любая должна справиться)
-        merged_expenses = ask_llm(llm_configs[0], prompt)
-        logging.info(f'Step 2: merged list, industry_id={i}\n{merged_expenses}')
-        save_file(f'{i}_expense_merged.md', merged_expenses)
+    # # step 2 - merge lists
+    # for i in target_industries:
+    #     industry_name = industries[i]
+    #     expenses = load_file(f'{i}_expense_list.md')
+    #     prompt = load_prompt('02-merge-lists-v2.txt', {
+    #         'industry_name': industry_name,
+    #         'list': expenses
+    #     })
+    #     # объединяем статьи (используем одну LLM, любая должна справиться)
+    #     merged_expenses = ask_llm(llm_configs[0], prompt)
+    #     logging.info(f'Step 2: merged list, industry_id={i}\n{merged_expenses}')
+    #     save_file(f'{i}_expense_merged.md', merged_expenses)
 
     # step 3 - add sum
     for i in target_industries:
         industry_name = industries[i]
-        expenses = load_file(f'{i}_expense_merged.md')
+        # expenses = load_file(f'{i}_expense_merged.md')
+        expenses = load_file(f'{i}_expense_list.md')
         for r in target_regions:
             region_name = regions[r]
             inv_dict = segm_by_reg_ind.get((r, i))
+            if inv_dict == None:
+                logging.error(f'Not found: industry_id={i} region_id={r}')
+                continue
             budget_s = inv_dict.get('S')
             budget_m = inv_dict.get('M')
             budget_l = inv_dict.get('L')
@@ -61,19 +69,19 @@ def main():
             logging.info(f'Step 3: list with sum, industry_id={i}, region_id={r}\n{expenses_with_sum}')
             save_file(f'{i}_{r}_expense_sum.md', expenses_with_sum)
 
-    # step 4 - avg sum
-    for i in target_industries:
-        for r in target_regions:
-            expenses = load_file(f'{i}_{r}_expense_sum.md')
-            prompt = load_prompt('04-avg-v2.txt', {
-                'list': expenses
-            })
-            avg_expenses = ask_llm(llm_configs[0], prompt)
-            logging.info(f'Step 4: calc stats, industry_id={i}, region_id={r}\n{expenses}')
-            save_file(f'{i}_{r}_expense_avg.md', avg_expenses)
-
-    # step 5 - save result
-    step5(target_industries, target_regions)
+    # # step 4 - avg sum
+    # for i in target_industries:
+    #     for r in target_regions:
+    #         expenses = load_file(f'{i}_{r}_expense_sum.md')
+    #         prompt = load_prompt('04-avg-v2.txt', {
+    #             'list': expenses
+    #         })
+    #         avg_expenses = ask_llm(llm_configs[0], prompt)
+    #         logging.info(f'Step 4: calc stats, industry_id={i}, region_id={r}\n{expenses}')
+    #         save_file(f'{i}_{r}_expense_avg.md', avg_expenses)
+    #
+    # # step 5 - save result
+    # step5(target_industries, target_regions)
 
 
 # save result
