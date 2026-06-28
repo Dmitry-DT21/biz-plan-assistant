@@ -2,14 +2,14 @@ from myglobal import *
 
 
 def main():
-    logging.info("Generating expenses v2")
-    target_regions = [10, 23, 50, 77, 78, 2301, 3601, 5201, 5401, 5501]
-    # target_industries = [20206, 50303, 60303, 90102, 90109, 100101, 131301, 140607, 150202, 181801]
-    # target_regions = [5401]
-    target_industries = [20206]
-
-    segm_by_reg_ind = get_investment(segments, target_regions, target_industries)
-    logging.debug(f'investments by (region, industry) = {segm_by_reg_ind}')
+    logging.error('DEPRECATED method. Use step1, step2, step3 instead')
+    # logging.info("Generating expenses v2")
+    # target_regions = [10, 23, 50, 77, 78, 2301, 3601, 5201, 5401, 5501]
+    # # target_industries = [20201, 90101, 110201, 20205, 20208, 20206, 110602, 100101, 20209, 20210, 20207, 130701, 181802]
+    # target_industries = [20201]
+    #
+    # segm_by_reg_ind = get_investment(segments, target_regions, target_industries)
+    # logging.debug(f'investments by (region, industry) = {segm_by_reg_ind}')
 
     # # step 1 - get expenses list by every industry
     # for i in target_industries:
@@ -39,36 +39,36 @@ def main():
     #     logging.info(f'Step 2: merged list, industry_id={i}\n{merged_expenses}')
     #     save_file(f'{i}_expense_merged.md', merged_expenses)
 
-    # step 3 - add sum
-    for i in target_industries:
-        industry_name = industries[i]
-        # expenses = load_file(f'{i}_expense_merged.md')
-        expenses = load_file(f'{i}_expense_list.md')
-        for r in target_regions:
-            region_name = regions[r]
-            inv_dict = segm_by_reg_ind.get((r, i))
-            if inv_dict == None:
-                logging.error(f'Not found: industry_id={i} region_id={r}')
-                continue
-            budget_s = inv_dict.get('S')
-            budget_m = inv_dict.get('M')
-            budget_l = inv_dict.get('L')
-            prompt = load_prompt('03-add-sum-v2.txt', {
-                'industry_name': industry_name,
-                'region_name': region_name,
-                'list': expenses,
-                'budget_s': str(budget_s),
-                'budget_m': str(budget_m),
-                'budget_l': str(budget_l),
-            })
-            # добавляем суммы
-            expenses_with_sum = ''
-            for config in llm_configs:
-                # получаем ответ от LLM на наш промпт
-                expenses_with_sum = expenses_with_sum + '\n' + ask_llm(config, prompt) + '\n'
-            logging.info(f'Step 3: list with sum, industry_id={i}, region_id={r}\n{expenses_with_sum}')
-            save_file(f'{i}_{r}_expense_sum.md', expenses_with_sum)
-
+    # # step 3 - add sum
+    # for i in target_industries:
+    #     industry_name = industries[i]
+    #     # expenses = load_file(f'{i}_expense_merged.md')
+    #     expenses = load_file(f'{i}_expense_list.md')
+    #     for r in target_regions:
+    #         region_name = regions[r]
+    #         inv_dict = segm_by_reg_ind.get((r, i))
+    #         if inv_dict == None:
+    #             logging.error(f'Not found: industry_id={i} region_id={r}')
+    #             continue
+    #         budget_s = inv_dict.get('S')
+    #         budget_m = inv_dict.get('M')
+    #         budget_l = inv_dict.get('L')
+    #         prompt = load_prompt('03-add-sum-v2.txt', {
+    #             'industry_name': industry_name,
+    #             'region_name': region_name,
+    #             'list': expenses,
+    #             'budget_s': str(budget_s),
+    #             'budget_m': str(budget_m),
+    #             'budget_l': str(budget_l),
+    #         })
+    #         # добавляем суммы
+    #         expenses_with_sum = ''
+    #         for config in llm_configs:
+    #             # получаем ответ от LLM на наш промпт
+    #             expenses_with_sum = expenses_with_sum + '\n' + ask_llm(config, prompt) + '\n'
+    #         logging.info(f'Step 3: list with sum, industry_id={i}, region_id={r}\n{expenses_with_sum}')
+    #         save_file(f'{i}_{r}_expense_sum.md', expenses_with_sum)
+    #
     # # step 4 - avg sum
     # for i in target_industries:
     #     for r in target_regions:
@@ -136,34 +136,16 @@ def get_line_values(line):
     return values
 
 
-def load_header_line(line):
-    header_dict = dict([])
-    values = get_line_values(line)
-    for i in range(len(values)):
-        header_dict[values[i]] = i
-    return header_dict
-
-
-def save_file(filename, data):
-    with open(CONFIG['data']['output'] + '/' + filename, 'w') as f:
-        f.write(data)
-
-
-def load_file(filename):
-    with open(CONFIG['data']['output'] + '/' + filename, 'r') as f:
-        return f.read()
-
-
-def get_investment(segments_list, regions_dict, industries_dict):
-    result = dict([])
-    for seg in segments_list:
-        r = seg['region_id']
-        i = seg['industry_id']
-        s = seg['size']
-        if r in regions_dict and i in industries_dict:
-            v = result.setdefault((r, i), dict([]))
-            v[s] = seg['investment']
-    return result
+# def get_investment(segments_list, regions_dict, industries_dict):
+#     result = dict([])
+#     for seg in segments_list:
+#         r = seg['region_id']
+#         i = seg['industry_id']
+#         s = seg['size']
+#         if r in regions_dict and i in industries_dict:
+#             v = result.setdefault((r, i), dict([]))
+#             v[s] = seg['investment']
+#     return result
 
 
 if __name__ == "__main__":

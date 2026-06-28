@@ -198,7 +198,8 @@ def append_output(data):
             f.write('industry_id;region_id;industry;region;size;expense;amount;min;max\n')
 
     with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
-        f.write(f'{data['industry_id']};{data['region_id']};{data['industry']};{data['region']};{data['size']};"{data['expense']}";{data['amount']};{data['min']};{data['max']}\n')
+        f.write(
+            f'{data['industry_id']};{data['region_id']};{data['industry']};{data['region']};{data['size']};"{data['expense']}";{data['amount']};{data['min']};{data['max']}\n')
 
 
 # сохранение строки в папке для логов
@@ -255,6 +256,46 @@ def ask_llm(config, prompt):
     answer = response.output_text if config['name'] == 'openai' else response.choices[0].message.content
     # logging.debug(answer)
     return answer
+
+
+def get_line_values(line):
+    values = []
+    for v in line.split('|'):
+        if v == '':
+            continue
+        v = v.strip()
+        if v.startswith('-'):
+            break
+        values.append(v)
+    return values
+
+
+def load_header_line(line):
+    header_dict = dict([])
+    values = get_line_values(line)
+    for i in range(len(values)):
+        header_dict[values[i]] = i
+    return header_dict
+
+
+def save_file(filename, data):
+    with open(CONFIG['data']['output'] + '/' + filename, 'w') as f:
+        f.write(data)
+
+
+def load_file(filename):
+    with open(CONFIG['data']['output'] + '/' + filename, 'r') as f:
+        return f.read()
+
+
+def save_file_lines(filename, lines):
+    with open(CONFIG['data']['output'] + '/' + filename, 'w') as f:
+        f.writelines(lines)
+
+
+def load_file_lines(filename):
+    with open(f'{CONFIG['data']['output']}/{filename}') as f:
+        return f.readlines()
 
 
 init_logs()
