@@ -278,6 +278,10 @@ def load_header_line(line):
     return header_dict
 
 
+def output_file_exists(filename):
+    return Path(f'{CONFIG['data']['output']}/{filename}').is_file()
+
+
 def save_file(filename, data):
     with open(CONFIG['data']['output'] + '/' + filename, 'w') as f:
         f.write(data)

@@ -1,5 +1,3 @@
-import logging
-
 from myglobal import *
 
 
@@ -21,11 +19,11 @@ def step2_process(llm_name):
     for i in target_industries:
 
         industry_name = industries[i]
-        expenses = load_file(f'{i}_expense_list.md')
+        expenses = load_file(f'{i}_list.md')
 
         for r in target_regions:
-            result_filename = f'{i}_{r}_{llm_name}_expense_sum.md'
-            if Path(CONFIG['data']['output'] + '/' + result_filename).is_file():
+            result_filename = f'{i}_{r}_{llm_name}_sum.md'
+            if output_file_exists(result_filename):
                 logging.debug(f'The file {result_filename} exists, skipping.')
                 continue
 
@@ -43,7 +41,7 @@ def step2_process(llm_name):
             budget_s = inv_dict.get('S')
             budget_m = inv_dict.get('M')
             budget_l = inv_dict.get('L')
-            prompt = load_prompt('02-add-sum-v2.txt', {
+            prompt = load_prompt('02-add-sum-v3.txt', {
                 'industry_name': industry_name,
                 'region_name': region_name,
                 'list': expenses,

@@ -3,7 +3,7 @@ from pathlib import Path
 from myglobal import industries, regions, CONFIG, load_file_lines
 
 BIG = 1_000_000_000
-ITEM = 'item'
+EXPENSE_CODE = 'code'
 N = 'n'
 SIZE_S = 'S'
 SIZE_M = 'M'
@@ -42,7 +42,6 @@ def main():
     #     print('Found some problems with data completeness')
     #     exit(1)
 
-    # problems = {}
     for (ind_reg, file_info) in ind_reg.items():
         industry_id = ind_reg[0]
         region_id = ind_reg[1]
@@ -51,14 +50,13 @@ def main():
 
         expenses_united = []
         for x in file_info:
-            # if x['llm'] in 'gigachat':
-            #     continue
-            prepared = prepare_data(x['filename'])
-            expenses_united += prepared
+            codes = load_codes(x['filename'])
+            expenses_united += codes
 
+        expenses_dict = load_expense_dict(industry_id)
         expenses_avg = {}
         for e in expenses_united:
-            stat = expenses_avg.setdefault(e[ITEM], zero_stat_with_size())
+            stat = expenses_avg.setdefault(e[EXPENSE_CODE], zero_stat_with_size())
             stat[N] += 1
             for size in SIZES:
                 x = stat[size]
@@ -67,18 +65,27 @@ def main():
                 x[MIN] = min(x[MIN], v)
                 x[MAX] = max(x[MAX], v)
 
-        # print(expenses_avg)
-
-        for (e, stat) in expenses_avg.items():
-            # for size in ['S', 'M', 'L']:
-            for size in ['S']:
+        for (code, stat) in expenses_avg.items():
+            for size in ['S', 'M', 'L']:
                 x = stat[size]
                 n = stat[N]
-                if n != 3:
-                    print('Problem ind_reg={}, {}, n={}'.format(ind_reg, e, n))
-                # print(f'{industry_id};{region_id};{industry};{region};{size};{e};{x[SUM] / n:.0f};{x[MIN]};{x[MAX]}')
+                expense = expenses_dict[code]
+                print(f'{industry_id};{region_id};{code};{industry};{region};{size};{expense};{x[SUM] / n:.0f};{x[MIN]};{x[MAX]}')
 
-    # print(problems)
+
+def load_expense_dict(industry_id):
+    filename = f'{industry_id}_list.md'
+    lines = load_file_lines(filename)
+    result = {}
+    for line in lines:
+        if 'Статья затрат' in line or '--' in line:
+            continue
+        parts = line.split('|')
+        try:
+            result[parts[2].strip()] = parts[1].strip()
+        except:
+            pass
+    return result
 
 
 def zero_stat():
@@ -98,18 +105,18 @@ def zero_stat_with_size():
     }
 
 
-def prepare_data(filename):
+def load_codes(filename):
     lines = load_file_lines(filename)
     expenses = []
     for line in lines:
         cols = line.split('|')
         try:
-            title = cols[1].strip()
+            expense_code = cols[1].strip()
             s = int(cols[2])
             m = int(cols[3])
             l = int(cols[4])
             expenses.append({
-                ITEM: title,
+                EXPENSE_CODE: expense_code,
                 SIZE_S: s, SIZE_M: m, SIZE_L: l,
             })
         except:

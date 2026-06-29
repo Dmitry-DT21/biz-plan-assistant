@@ -22,20 +22,6 @@ def main():
         align(f2)
 
 
-def load_expense_list(filename):
-    lines = load_file_lines(filename)
-    result = []
-    for line in lines:
-        if 'Статья затрат' in line or '--' in line:
-            continue
-        parts = line.split('|')
-        try:
-            result.append(parts[1])
-        except:
-            pass
-    return result
-
-
 def align(filename):
     # print('Processing {}'.format(filename))
     lines = load_file_lines(filename)
