@@ -12,6 +12,7 @@ SUM = 'sum'
 MIN = 'min'
 MAX = 'max'
 SIZES = [SIZE_S, SIZE_M, SIZE_L]
+OUTPUT_FILE = CONFIG['data']['output'] + '/result.csv'
 
 
 def main():
@@ -42,6 +43,7 @@ def main():
     #     print('Found some problems with data completeness')
     #     exit(1)
 
+    count = 0
     for (ind_reg, file_info) in ind_reg.items():
         industry_id = ind_reg[0]
         region_id = ind_reg[1]
@@ -70,7 +72,20 @@ def main():
                 x = stat[size]
                 n = stat[N]
                 expense = expenses_dict[code]
-                print(f'{industry_id};{region_id};{code};{industry};{region};{size};{expense};{x[SUM] / n:.0f};{x[MIN]};{x[MAX]}')
+                line = f'{industry_id};{region_id};{code};{industry};{region};{size};{expense};{x[SUM] / n:.0f};{x[MIN]};{x[MAX]}'
+                append_output(line)
+                count += 1
+    print(f'Processed {count} lines\r')
+
+
+# добавляем строку с данными в выходной файл результата
+def append_output(line):
+    if not Path(OUTPUT_FILE).is_file():
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            f.write('industry_id;region_id;code;industry;region;size;expense;amount;min;max\n')
+
+    with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
+        f.write(f'{line}\n')
 
 
 def load_expense_dict(industry_id):
